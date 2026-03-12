@@ -4,8 +4,15 @@
 # Usage:
 #   make build                       Build using cached base image (no network needed)
 #   make build-pull                  Build pulling fresh base layers from Docker Hub
-#   make setup MODEL=<hf-repo>       Download model & compile kernels
-#   make run PROMPT="Hello"          Run interactive inference
+#   make setup                       Download default model & compile kernels
+#   make setup-small                 0.7B  — bitnet_b1_58-large
+#   make setup-3b                    3.3B  — bitnet_b1_58-3B
+#   make setup-llama                 8.0B  — Llama3-8B-1.58-100B-tokens
+#   make setup-falcon1b              1B    — Falcon3-1B-Instruct-1.58bit
+#   make setup-falcon3b              3B    — Falcon3-3B-Instruct-1.58bit
+#   make setup-falcon7b              7B    — Falcon3-7B-Instruct-1.58bit
+#   make setup-falcon10b             10B   — Falcon3-10B-Instruct-1.58bit
+#   make run PROMPT="Hello"          Run single-shot inference
 #   make chat PROMPT="sys prompt"    Run in conversation/chat mode
 #   make benchmark                   Run e2e benchmark
 #   make shell                       Open a bash shell in the container
@@ -16,24 +23,67 @@
 #   make clean-image                 Remove the built Docker image
 # ============================================================
 
+# Load .env if it exists — lets users set defaults without touching this file.
+# Command-line overrides (make VAR=x) still take highest precedence.
+-include .env
+export
+
 COMPOSE         := docker compose
 IMAGE           := bitnet-cpp:latest
 
-# Default model (HF repo ID and local directory name)
+# ── Model defaults ──────────────────────────────────────────
 MODEL           ?= microsoft/BitNet-b1.58-2B-4T-gguf
 MODEL_DIR       ?= models/BitNet-b1.58-2B-4T
 QUANT_TYPE      ?= i2_s
+GGUF_PATH       ?= $(MODEL_DIR)/ggml-model-$(QUANT_TYPE).gguf
+
+# ── Inference defaults (override in .env or on the command line) ─
 THREADS         ?= 4
 N_TOKEN         ?= 128
 N_PROMPT        ?= 512
 CTX_SIZE        ?= 2048
 TEMPERATURE     ?= 0.8
 PROMPT          ?= You are a helpful assistant.
-GGUF_PATH       ?= $(MODEL_DIR)/ggml-model-$(QUANT_TYPE).gguf
+HF_TOKEN        ?=
 
-.PHONY: all build build-pull setup download run chat benchmark shell logs clean clean-build clean-image help
+.PHONY: all build build-pull setup download run chat benchmark shell logs clean clean-build clean-image help \
+        setup-small setup-3b setup-llama \
+        setup-falcon1b setup-falcon3b setup-falcon7b setup-falcon10b
 
 all: setup
+
+# ── Model presets ────────────────────────────────────────────────────────────
+## 0.7B  — bitnet_b1_58-large  (fastest, lowest RAM)
+setup-small: MODEL     = 1bitLLM/bitnet_b1_58-large
+setup-small: MODEL_DIR = models/bitnet_b1_58-large
+setup-small: setup
+
+## 3.3B  — bitnet_b1_58-3B
+setup-3b: MODEL     = 1bitLLM/bitnet_b1_58-3B
+setup-3b: MODEL_DIR = models/bitnet_b1_58-3B
+setup-3b: setup
+
+## 8.0B  — Llama3-8B-1.58-100B-tokens  (best quality, needs ~6 GB RAM)
+setup-llama: MODEL     = HF1BitLLM/Llama3-8B-1.58-100B-tokens
+setup-llama: MODEL_DIR = models/Llama3-8B
+setup-llama: setup
+
+## Falcon3 family
+setup-falcon1b: MODEL     = tiiuae/Falcon3-1B-Instruct-1.58bit
+setup-falcon1b: MODEL_DIR = models/Falcon3-1B
+setup-falcon1b: setup
+
+setup-falcon3b: MODEL     = tiiuae/Falcon3-3B-Instruct-1.58bit
+setup-falcon3b: MODEL_DIR = models/Falcon3-3B
+setup-falcon3b: setup
+
+setup-falcon7b: MODEL     = tiiuae/Falcon3-7B-Instruct-1.58bit
+setup-falcon7b: MODEL_DIR = models/Falcon3-7B
+setup-falcon7b: setup
+
+setup-falcon10b: MODEL     = tiiuae/Falcon3-10B-Instruct-1.58bit
+setup-falcon10b: MODEL_DIR = models/Falcon3-10B
+setup-falcon10b: setup
 
 ## Build the Docker image (uses locally cached base layers; no Docker Hub access needed)
 ## Disables BuildKit so Docker uses the legacy builder, which skips registry
@@ -72,6 +122,7 @@ run: build
 		  -p "$(PROMPT)" \
 		  -t $(THREADS) \
 		  -c $(CTX_SIZE) \
+		  -n $(N_TOKEN) \
 		  -temp $(TEMPERATURE)
 
 ## Run in conversation / chat mode (system prompt via -p)
@@ -83,6 +134,7 @@ chat: build
 		  -p "$(PROMPT)" \
 		  -t $(THREADS) \
 		  -c $(CTX_SIZE) \
+		  -n $(N_TOKEN) \
 		  -temp $(TEMPERATURE) \
 		  -cnv
 
@@ -148,6 +200,9 @@ help:
 	@echo "    QUANT_TYPE   Quantization type     (default: $(QUANT_TYPE))"
 	@echo "    GGUF_PATH    Path to .gguf file    (default: $(GGUF_PATH))"
 	@echo "    THREADS      CPU thread count      (default: $(THREADS))"
+	@echo "    CTX_SIZE     Context window size   (default: $(CTX_SIZE))"
+	@echo "    N_TOKEN      Max tokens to generate(default: $(N_TOKEN))"
+	@echo "    TEMPERATURE  Sampling temperature  (default: $(TEMPERATURE))"
 	@echo "    PROMPT       Inference prompt      (default: '$(PROMPT)')"
 	@echo "    HF_TOKEN     Hugging Face token    (for gated models)"
 	@echo ""
