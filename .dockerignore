@@ -1,0 +1,20 @@
+# Exclude large model files from the Docker build context.
+# Without this, every `docker build` would upload gigabytes to the daemon.
+models/
+
+# Git history — not needed inside the image (the Dockerfile clones fresh)
+.git/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Local env overrides
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo

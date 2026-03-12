@@ -1,0 +1,49 @@
+services:
+  bitnet:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bitnet-cpp:latest
+    container_name: bitnet-cpp
+    volumes:
+      # Persist downloaded models outside the container
+      - ./models:/app/models
+      # Persist build artifacts (kernel binaries) across runs
+      - bitnet-build:/app/build
+      # Persist cmake/setup logs on the host so `make logs` works after --rm
+      - ./logs:/app/logs
+    environment:
+      # Optional: set your Hugging Face token for private/gated models
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+      # Thread count for inference (default: use all physical cores)
+      - BITNET_THREADS=${BITNET_THREADS:-4}
+    # Run interactively by default; override CMD per target in the Makefile
+    stdin_open: true
+    tty: true
+    command: ["python3", "run_inference.py", "--help"]
+
+  # Convenience service for running a one-shot benchmark
+  benchmark:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bitnet-cpp:latest
+    container_name: bitnet-benchmark
+    volumes:
+      - ./models:/app/models
+      - bitnet-build:/app/build
+      - ./logs:/app/logs
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    command: >
+      python3 utils/e2e_benchmark.py
+        -m ${MODEL_PATH:-models/BitNet-b1.58-2B-4T/ggml-model-i2_s.gguf}
+        -n ${N_TOKEN:-128}
+        -p ${N_PROMPT:-512}
+        -t ${BITNET_THREADS:-4}
+    profiles:
+      - benchmark
+
+volumes:
+  bitnet-build:
+    driver: local
